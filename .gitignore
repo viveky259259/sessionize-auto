@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+
+# Local review data and generated workbooks can contain submitted proposals.
+session-review-state.json
+.session-review/
+*.xlsx

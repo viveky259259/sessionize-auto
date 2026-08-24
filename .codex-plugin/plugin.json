@@ -1,0 +1,23 @@
+{
+  "name": "session-reviewer",
+  "version": "0.1.0+codex.20260824103910",
+  "description": "Review large session-proposal workbooks quickly inside Codex.",
+  "author": {
+    "name": "Vivek"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Session Reviewer",
+    "shortDescription": "Triage and score session proposals from Excel.",
+    "longDescription": "A local Excel review workflow with duplicate detection, rubric scoring, and export.",
+    "developerName": "Vivek",
+    "category": "Productivity",
+    "capabilities": [
+      "Local data",
+      "Excel review",
+      "Write"
+    ],
+    "defaultPrompt": "Review my session proposal workbook with Session Reviewer."
+  },
+  "mcpServers": "./.mcp.json"
+}
