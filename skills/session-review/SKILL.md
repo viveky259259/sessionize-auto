@@ -17,6 +17,10 @@ When the user supplies a Sessionize organizer URL, use the signed-in Sessionize 
 4. Update the review workbook with Description immediately after Title, preserve its existing review fields, and add the topic category field. Make descriptions wrapped and readable.
 5. Use `analyze_sessions` after enrichment, because descriptions improve duplicate and quality analysis.
 
+## Submission summaries
+
+Use `create_submission_summary` when the user asks for an overview intended for another person. Provide their direction as `instruction`. The tool reuses a prepared workspace when available; otherwise give it the source workbook so it can prepare local categories and analysis first. Treat the returned narrative as a factual draft and keep any final audience-specific claims rooted in its metrics and titles.
+
 ## Review flow
 
 1. Call `import_sessions` for the supplied `.xlsx` file. If field inference is ambiguous, call `inspect_import`, explain the alternatives, and ask the user to choose a mapping before reviewing.

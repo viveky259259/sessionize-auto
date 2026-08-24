@@ -47,6 +47,12 @@ class SessionReviewerTests(unittest.TestCase):
         self.assertEqual(rows[0]["Topic Category"], "Security & Privacy")
         self.assertEqual(rows[0]["Decision"], "accept")
 
+        summary = SERVER.tool_create_summary({"workspace_dir": str(self.workspace), "instruction": "A concise organizer update."})
+        self.assertFalse(summary["prepared_from_source"])
+        self.assertEqual(summary["metrics"]["submission_count"], 3)
+        self.assertEqual(summary["metrics"]["decision_counts"], {"accept": 1, "maybe": 1, "reject": 1})
+        self.assertIn("Prepared for: A concise organizer update.", summary["summary"])
+
     def test_invalid_score_is_rejected_without_state_mutation(self):
         SERVER.tool_import({"source_path": str(self.source), "workspace_dir": str(self.workspace)})
         with self.assertRaises(SERVER.ToolError):
@@ -76,6 +82,16 @@ class SessionReviewerTests(unittest.TestCase):
         responses = [json.loads(line) for line in process.stdout.splitlines()]
         self.assertEqual(len(responses), 1)
         self.assertEqual(responses[0]["id"], 1)
+
+    def test_summary_prepares_source_workbook_and_rejects_missing_inputs(self):
+        workspace = self.root / "summary-workspace"
+        summary = SERVER.tool_create_summary({"source_path": str(self.source), "workspace_dir": str(workspace), "instruction": "A neutral intake overview."})
+        self.assertTrue(summary["prepared_from_source"])
+        self.assertEqual(summary["metrics"]["submission_count"], 3)
+        self.assertIn("Security & Privacy", summary["topic_distribution"])
+        self.assertTrue((workspace / "session-review-state.json").is_file())
+        with self.assertRaises(SERVER.ToolError):
+            SERVER.tool_create_summary({"instruction": ""})
 
 
 def zipfile_names(path, expected):

@@ -459,6 +459,91 @@ def tool_categorize_topics(args: dict[str, Any]) -> dict[str, Any]:
     return {"workspace_dir": str(root), "session_count": len(state["sessions"]), "categories": dict(counts), "category_list": list(TOPIC_CATEGORIES)}
 
 
+def resolve_summary_workspace(args: dict[str, Any]) -> tuple[Path, dict[str, Any], bool]:
+    """Return a prepared workspace, importing the workbook only when necessary."""
+    workspace_dir = text(args.get("workspace_dir"))
+    source_path = text(args.get("source_path"))
+    if workspace_dir:
+        try:
+            root, state = load_state(workspace_dir)
+            return root, state, False
+        except ToolError:
+            if not source_path:
+                raise
+    if not source_path:
+        raise ToolError("Provide workspace_dir for a prepared review or source_path for an .xlsx workbook.")
+    imported = tool_import({
+        "source_path": source_path,
+        "workspace_dir": workspace_dir or str(Path(source_path).expanduser().resolve().parent / ".session-review"),
+        "sheet_name": args.get("sheet_name"),
+        "mapping": args.get("mapping"),
+    })
+    root, state = load_state(imported["workspace_dir"])
+    return root, state, True
+
+
+def summary_metrics(state: dict[str, Any]) -> tuple[dict[str, Any], dict[str, int], list[str]]:
+    mapping = state["mapping"]
+    views = [session_view(session, mapping) for session in state["sessions"]]
+    topic_counts = Counter(view["topic_category"] for view in views)
+    decisions = Counter(review["decision"] for review in state["reviews"].values())
+    analysis_data = state["analysis"]
+    quality_flagged = sum(bool(flags) for flags in analysis_data["quality_flags"].values())
+    titles = [view["title"] for view in views if text(view["title"])][:3]
+    metrics = {
+        "submission_count": len(views),
+        "reviewed_count": len(state["reviews"]),
+        "remaining_count": len(views) - len(state["reviews"]),
+        "decision_counts": dict(decisions),
+        "quality_flagged_sessions": quality_flagged,
+        "duplicate_cluster_count": len(analysis_data["clusters"]),
+    }
+    return metrics, dict(topic_counts.most_common()), titles
+
+
+def draft_summary(instruction: str, metrics: dict[str, Any], topics: dict[str, int], titles: list[str]) -> str:
+    top_topics = list(topics.items())[:3]
+    topic_text = ", ".join(f"{name} ({count})" for name, count in top_topics) or "no categorized topics"
+    lines = [
+        f"Submission summary ({metrics['submission_count']} proposals)",
+        f"Prepared for: {instruction}",
+        f"The submission pool spans {len(topics)} topic categories. The largest areas are {topic_text}.",
+    ]
+    if metrics["reviewed_count"]:
+        decisions = metrics["decision_counts"]
+        decision_text = ", ".join(f"{name}: {count}" for name, count in sorted(decisions.items())) or "no decisions recorded"
+        lines.append(f"Review progress: {metrics['reviewed_count']} reviewed and {metrics['remaining_count']} remaining ({decision_text}).")
+    else:
+        lines.append("No review decisions have been recorded yet; this is an intake-level summary.")
+    if metrics["quality_flagged_sessions"] or metrics["duplicate_cluster_count"]:
+        lines.append(f"Review attention: {metrics['quality_flagged_sessions']} proposals have quality flags and {metrics['duplicate_cluster_count']} similarity clusters need editorial comparison.")
+    if titles:
+        lines.append("Representative submitted titles: " + "; ".join(titles) + ".")
+    return "\n\n".join(lines)
+
+
+def tool_create_summary(args: dict[str, Any]) -> dict[str, Any]:
+    instruction = text(required(args, "instruction"))
+    if len(instruction) > 2_000:
+        raise ToolError("instruction must be 2,000 characters or fewer.")
+    root, state, prepared_from_source = resolve_summary_workspace(args)
+    mapping = state["mapping"]
+    for session in state["sessions"]:
+        view = session_view(session, mapping)
+        session.setdefault("enrichment", {})["topic_category"] = topic_category(view["title"], view["abstract"], view["format"])
+    state["analysis"] = analyze(state)
+    save_state(root, state)
+    metrics, topics, titles = summary_metrics(state)
+    return {
+        "workspace_dir": str(root),
+        "prepared_from_source": prepared_from_source,
+        "instruction": instruction,
+        "metrics": metrics,
+        "topic_distribution": topics,
+        "summary": draft_summary(instruction, metrics, topics, titles),
+    }
+
+
 def tool_batch(args: dict[str, Any]) -> dict[str, Any]:
     _, state = load_state(required(args, "workspace_dir"))
     limit = int(args.get("limit", 10))
@@ -591,6 +676,7 @@ TOOL_DEFINITIONS = [
     ("inspect_import", "Inspect imported fields, mappings, and sample sessions.", {"workspace_dir": {"type": "string"}}, ["workspace_dir"]),
     ("enrich_session_details", "Save read-only detail-page data such as submitted descriptions and Sessionize metadata into the local review workspace.", {"workspace_dir": {"type": "string"}, "sessions": {"type": "array", "minItems": 1, "items": {"type": "object"}}}, ["workspace_dir", "sessions"]),
     ("categorize_topics", "Assign a deterministic topic category to every proposal from its title, description, and format.", {"workspace_dir": {"type": "string"}}, ["workspace_dir"]),
+    ("create_submission_summary", "Prepare a review workspace when needed and return a factual, audience-directed submission summary.", {"workspace_dir": {"type": "string"}, "source_path": {"type": "string"}, "sheet_name": {"type": "string"}, "mapping": {"type": "object", "additionalProperties": {"type": "string"}}, "instruction": {"type": "string", "minLength": 1, "maxLength": 2000}}, ["instruction"]),
     ("analyze_sessions", "Flag incomplete proposals and find conservative duplicate clusters.", {"workspace_dir": {"type": "string"}}, ["workspace_dir"]),
     ("get_review_batch", "Fetch a bounded batch of session proposals for scoring.", {"workspace_dir": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 15}, "cursor": {"type": "integer", "minimum": 0}, "status": {"type": "string", "enum": ["unreviewed", "reviewed", "all"]}}, ["workspace_dir"]),
     ("record_reviews", "Persist a batch of validated rubric scores, decisions, and comments.", {"workspace_dir": {"type": "string"}, "reviews": {"type": "array", "minItems": 1, "items": {"type": "object"}}}, ["workspace_dir", "reviews"]),
@@ -598,7 +684,7 @@ TOOL_DEFINITIONS = [
     ("review_progress", "Summarize review decisions and unresolved duplicate clusters.", {"workspace_dir": {"type": "string"}}, ["workspace_dir"]),
     ("export_reviews", "Export scores, flags, comments, shortlist, and duplicate clusters to a new .xlsx workbook.", {"workspace_dir": {"type": "string"}, "output_path": {"type": "string"}, "overwrite": {"type": "boolean"}}, ["workspace_dir"]),
 ]
-TOOL_FUNCTIONS = {"import_sessions": tool_import, "inspect_import": tool_inspect, "enrich_session_details": tool_enrich_details, "categorize_topics": tool_categorize_topics, "analyze_sessions": tool_analyze, "get_review_batch": tool_batch, "record_reviews": tool_record, "get_duplicate_cluster": tool_cluster, "review_progress": tool_progress, "export_reviews": tool_export}
+TOOL_FUNCTIONS = {"import_sessions": tool_import, "inspect_import": tool_inspect, "enrich_session_details": tool_enrich_details, "categorize_topics": tool_categorize_topics, "create_submission_summary": tool_create_summary, "analyze_sessions": tool_analyze, "get_review_batch": tool_batch, "record_reviews": tool_record, "get_duplicate_cluster": tool_cluster, "review_progress": tool_progress, "export_reviews": tool_export}
 
 
 def tool_schema() -> list[dict[str, Any]]:

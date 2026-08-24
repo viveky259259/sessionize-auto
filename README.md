@@ -9,6 +9,7 @@ Session Reviewer is a local Codex plugin for organizing and reviewing conference
 - Categorizes proposals by topic.
 - Flags incomplete proposals and conservative duplicate clusters.
 - Records five rubric scores, an accept/maybe/reject decision, and reviewer comments.
+- Creates audience-directed factual summaries from prepared reviews or an incoming workbook.
 - Exports reviewed sessions, a shortlist, and duplicate-cluster evidence to Excel.
 
 ## Privacy
@@ -27,8 +28,9 @@ The core MCP flow is:
 2. `enrich_session_details` (when Sessionize details were collected)
 3. `categorize_topics`
 4. `analyze_sessions`
-5. `get_review_batch` and `record_reviews`
-6. `review_progress` and `export_reviews`
+5. `create_submission_summary` when a stakeholder-facing overview is needed
+6. `get_review_batch` and `record_reviews`
+7. `review_progress` and `export_reviews`
 
 ## Development
 

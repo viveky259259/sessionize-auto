@@ -1,6 +1,6 @@
 {
   "name": "session-reviewer",
-  "version": "0.1.0+codex.20260824103910",
+  "version": "0.1.0+codex.20260824154436",
   "description": "Review large session-proposal workbooks quickly inside Codex.",
   "author": {
     "name": "Vivek"
